@@ -148,6 +148,72 @@ test = Binop Plus (Num 1) (Binop Mult (Num 2) (Num 3))
 optimized :: Foo
 optimized = constFold test
 
+type Foo' = Fix FooB'
+
+data FooB' a = NumB' Int
+            | StringB' String
+            | BinopB' Op a a
+            | FunB' String a
+            | AppB' a a
+            | VarB' String
+    deriving (Functor, Show)
+
+-- This is reduce without using recursion-schemes.
+-- reduceBad :: Foo -> Foo
+-- reduceBad (Binop op (Num a) (Num b)) = Num $ compute op a b -- The reduction
+-- reduceBad a                          = a
+
+-- This is reduce with recursion-schemes.
+-- reduce' :: Base Foo Foo -> Foo
+-- reduce' :: FooB' (Fix FooB') -> Fix FooB'
+reduce' :: FooB' Foo' -> Foo'
+reduce' (BinopB' op (Fix (NumB' a)) (Fix (NumB' b))) = Fix $ NumB' $ compute op a b
+reduce' a = embed a
+
+constFold' :: Foo' -> Foo'
+constFold' = cata reduce'
+
+test' :: Foo'
+test' = Fix (BinopB' Plus
+                     (Fix (NumB' 1))
+                     (Fix (BinopB' Mult
+                                   (Fix (NumB' 2))
+                                   (Fix (NumB' 3))
+                          )
+                     )
+            )
+
+optimized' :: Foo'
+optimized' = constFold' test'
+
+-- freeVar :: Base Foo' [String] -> [String]
+freeVar :: FooB' [String] -> [String]
+freeVar (NumB' _)         = []
+freeVar (StringB' _)      = []
+freeVar (VarB' s)         = [s]
+freeVar (BinopB' _ v1 v2) = v1 ++ v2
+freeVar (AppB' v1 v2)     = v1 ++ v2
+freeVar (FunB' v vs)      = delete v vs
+
+delete :: (Eq a) => a -> [a] -> [a]
+delete _ []                 = []
+delete x (y:ys) | x == y    = ys
+                | otherwise = y : delete x ys
+
+-- As we’d hope, this traversal is much easier to write than the first one.
+-- You can imagine that the boilerplate of writing FooB and project is
+-- amortized over each traversal, making it much easier to write subsequent
+-- traversals once we’ve gone through the trouble of actually laying down
+-- the foundation.
+freeIn :: Foo' -> [String]
+freeIn = cata freeVar
+
+test'' :: [String]
+test'' = freeIn $ Fix (AppB' (Fix (FunB' "hello"
+                                         (Fix (VarB' "hello"))))
+                             (Fix (VarB' "bye"))
+                      )
+
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
