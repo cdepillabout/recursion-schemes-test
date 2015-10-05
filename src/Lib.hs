@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -14,6 +15,7 @@ module Lib
 -- And the paper here:
 -- http://eprints.eemcs.utwente.nl/7281/01/db-utwente-40501F46.pdf
 
+import Control.Monad
 import Data.Functor.Foldable
 import Prelude hiding (Foldable)
 
@@ -41,6 +43,17 @@ instance Foldable (MyList a) where
     -- para :: (Base (MyList a) (MyList a, b) -> b) -> t -> b
     -- para :: (BList a (MyList a, b) -> b) -> t -> b
 
+instance Unfoldable (MyList a) where
+    -- embed :: Base t t -> t
+    -- embed :: Base (MyList a) (MyList a) -> MyList a
+    embed :: BList a (MyList a) -> MyList a
+    embed BNil = MyNil
+    embed (BCons a rest) = MyCons a rest
+
+    -- ana :: (b -> Base t b) -> b -> t
+    -- ana :: (b -> Base (MyList a) b) -> b -> MyList a
+    -- ana :: (b -> BList a b) -> b -> MyList a
+
 -- In the webpage, these two are only defined as partial functions, with
 -- only the BCons cases defined...
 out :: Fix (BList a) -> MyList a
@@ -57,6 +70,21 @@ cataTest BNil = 0
 paraTest :: BList Int (MyList Int, String) -> String
 paraTest (BCons i (myList, rest)) = show i ++ rest ++ "\n\t" ++ show myList ++ "\n"
 paraTest BNil = "BNil"
+
+anaTest :: Int -> BList String Int
+anaTest 10 = BNil
+anaTest n = BCons (show n) (n+1)
+
+betweenBad :: (Ord a, Enum a) => a -> a -> MyList a
+betweenBad a b | succ a >= b = MyNil
+               | otherwise   = succ a `MyCons` betweenBad (succ a) b
+
+between :: Int -> Int -> MyList Int
+between low high = ana builder low
+  where
+    builder :: Int -> BList Int Int
+    builder i | succ i >= high = BNil
+              | otherwise      = join BCons $ succ i
 
 myMap :: forall a b . (a -> b) -> MyList a -> MyList b
 myMap f = cata mapper
